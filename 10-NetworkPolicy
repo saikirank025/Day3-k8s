@@ -1,0 +1,46 @@
+Step 1
+minikube start --network-plugin=cni --memory=4096
+kubectl create -f https://raw.githubusercontent.com/cilium/cilium/v1.7/install/kubernetes/quick-install.yaml
+
+Step 2:
+kubectl run --generator=run-pod/v1 apiserver --image=ahmet/app-on-two-ports --labels=app=apiserver
+
+Step 3
+kubectl create service clusterip apiserver --tcp 8001:8000 --tcp 5001:5000
+
+Step 4
+policy.txt
+==========
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: api-allow-5000 
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: apiserver
+  ingress:
+  - ports:
+    - port: 5000
+    from:
+    - podSelector:
+        matchLabels:
+          role: monitoring
+
+Step 5:
+kubectl create -f policy.txt
+
+Step 6:
+kubectl run --generator=run-pod/v1 test-001 --rm -i -t --image=alpine -- sh
+# wget -qO- --timeout=2 http://apiserver:8001
+# wget -qO- --timeout=2 http://apiserver:5001/metrics
+# exit
+
+
+Step 7:
+Now apply role=monitoring in a pod
+kubectl run --generator=run-pod/v1 test-001 --rm -i -t --image=alpine -l role=monitoring -- sh
+# wget -qO- --timeout=2 http://apiserver:8001  (This will be timed out)
+# wget -qO- --timeout=2 http://apiserver:5001/metrics (This will give you output)
+# exit

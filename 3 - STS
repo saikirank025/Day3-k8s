@@ -1,0 +1,147 @@
+Verify local-storage storage class created , else create one
+--------------------------------------------------------------
+
+Step 1:
+kubectl get sc
+
+Step 2:
+In case no storage class :
+==========================
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+Step 3:
+---------
+Create a Persistent Volume of local-storage with ReadWriteOnce
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: example-local-pv-001
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Recycle
+  storageClassName: local-storage
+  local:
+    path: /mnt/disks
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - minikube
+
+Step 4:
+=======
+Create sts with one replica of STS:
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: default
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    protocol: TCP
+  selector:
+    app: redis
+  type: ClusterIP
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  serviceName: "redis"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:5.0.4
+        command: ["redis-server", "--appendonly", "yes"]
+        ports:
+        - containerPort: 6379
+          name: web
+        volumeMounts:
+        - name: redis-aof
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-aof
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: "local-storage"
+      resources:
+        requests:
+          storage: 1Gi
+		  
+		  
+Step 5:
+=========
+Create 2 Pods claiming the same claim. Note down the claim created by Step 4 and amend it
+Claims cant be updated. So delete STS and recreate as below
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: default
+  labels:
+    app: redis
+spec:
+  ports:
+  - port: 6379
+    protocol: TCP
+  selector:
+    app: redis
+  type: ClusterIP
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  serviceName: "redis"
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:5.0.4
+        command: ["redis-server", "--appendonly", "yes"]
+        ports:
+        - containerPort: 6379
+          name: web
+        volumeMounts:
+        - name: redis-aof
+          mountPath: /data
+      volumes:
+        - name: redis-aof
+          persistentVolumeClaim:
+           claimName: redis-aof-redis-0 

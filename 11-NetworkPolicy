@@ -1,0 +1,42 @@
+Networking Policy
+=================
+Suppose your application is a REST API server, marked with labels app=bookstore and role=api:
+restrict the access only to other pods (e.g. other microservices) running with label app=bookstore:
+
+Step 1
+kubectl run --generator=run-pod/v1 apiserver --image=nginx --labels app=bookstore,role=api --expose --port 80
+
+Step 2:
+network.txt
+===========
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: api-allow
+  namespace: demo28
+spec:
+  podSelector:
+    matchLabels:
+      app: bookstore
+      role: api
+  ingress:
+  - from:
+      - podSelector:
+          matchLabels:
+            app: bookstore
+
+Step 3:
+kubectl run --generator=run-pod/v1 test --rm -i -t --image=alpine -- sh
+# wget -qO- --timeout=2 http://apiserver
+
+Now , change the label of API Server from other terminal
+kubectl label pod apiserver -l app=null
+
+# wget -qO- --timeout=2 http://apiserver
+
+kubectl label pod apiserver -l app=bookstore
+
+# wget -qO- --timeout=2 http://apiserver
+
+Step 4:
+kubectl delete networkpolicy --all
